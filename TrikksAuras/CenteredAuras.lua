@@ -375,7 +375,7 @@ function M:BuildSettings(body, page)
         ApplyAnchor()
     end)
     Place(resetPos, -12)
-    local tip = TT.Label(right, "Move the row in Edit Mode (Esc > Edit Mode):\nit's listed as \"Centered Auras\", with its own\nposition per layout.\n\nTip: IDs & Links - hold Ctrl over a buff\nto see its spell ID.\n\n|cffffaa00*|r Blizzard hides this buff from addons in\ncombat: it keeps showing if it was up before\nthe fight, but can't appear if you get it\nduring combat.", "GameFontDisableSmall")
+    local tip = TT.Label(right, "Move the row in Edit Mode (Esc > Edit Mode):\nit's listed as \"Centered Auras\", with its own\nposition per layout.\n\nTip: IDs & Links - hold Ctrl over a buff\nto see its spell ID.\n\n|cffffaa00*|r Blizzard hides this buff from addons in\ncombat: it keeps showing if it was up before\nthe fight, but can't appear if you get it\nduring combat: use the Cooldown Manager\ntab for those.", "GameFontDisableSmall")
     Place(tip, -10)
 
     -- picker: auras you have right now, click to add
