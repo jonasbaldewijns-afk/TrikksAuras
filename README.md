@@ -5,6 +5,7 @@ Your chosen buffs and debuffs in a row that grows from the centre (1 icon = midd
 - Whitelist by spell ID or name, or pick from the buffs you have right now
 - Placed with Blizzard's **Edit Mode**, with its own position per layout
 - Icon size, spacing, scale, opacity, vertical, cooldown swipe, timers, stacks, test mode
+- **Buff reminders**: an icon when one of your class buffs is missing or about to run out (out of combat only); click it to cast. Can count group members missing it. Add your own (food, flasks, ...). `/ca buffs`
 
 Open the settings with **/ca** (or /trikksauras). `/ca add <id or name>`, `/ca remove <id>`, `/ca test`.
 

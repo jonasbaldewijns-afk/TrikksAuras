@@ -5,6 +5,9 @@
 local ADDON, TT = ...
 -- M.db = saved settings (TrikksAurasDB), M.enabled = on/off; filled in on ADDON_LOADED
 local M = { enabled = false }
+-- shared with the other files of this addon (Reminders.lua)
+TT.onReady = {}         -- functions(db) run once the saved settings are loaded
+TT.extraTabs = {}       -- extra pages in the window: { title, build = function(win) return page end }
 local DEFAULTS = {
     enabled = true,                      -- installing the addon is the opt-in
     spells = {}, size = 40, spacing = 4, x = 0, y = -150, layouts = {},
@@ -29,6 +32,7 @@ end
 -- and tells us which Edit Mode layout is active so every layout can have its
 -- own position.
 local LEM = LibStub and LibStub("LibEditMode", true)
+TT.LEM = LEM
 local DEFAULT_POS = { point = "CENTER", x = 0, y = -150 }
 local inEditMode, currentLayout = false, nil
 
@@ -411,15 +415,51 @@ function M:OnEnable() RegisterEditMode(); ApplyAnchor(); Update() end
 function M:OnDisable() ApplyAnchor(); Update() end
 
 -- the window: on/off switch on top, the settings page below (built on first open)
-local enableCheck = TT.Check(win, "Enabled", function(v)
+-- the Centered Auras page; other pages (tabs) are added by the other files
+local auraPage = CreateFrame("Frame", nil, win)
+auraPage:SetAllPoints()
+local enableCheck = TT.Check(auraPage, "Enabled", function(v)
     M.enabled, M.db.enabled = v, v
     if v then M:OnEnable() else M:OnDisable() end
 end)
 enableCheck:SetPoint("TOPLEFT", 18, -40)
-local body = CreateFrame("Frame", nil, win)
+local body = CreateFrame("Frame", nil, auraPage)
 body:SetPoint("TOPLEFT", 16, -70); body:SetPoint("BOTTOMRIGHT", -16, 16)
+-- tab buttons top right; the selected one gets an accent border
+local tabs = {}
+local function SelectTab(i)
+    for j, t in ipairs(tabs) do
+        t.page:SetShown(i == j)
+        t.button.selected = (i == j)
+        t.button:SetBackdropBorderColor(unpack(i == j and TT.C.accent or TT.C.border))
+    end
+end
+function TT.SelectTab(title)
+    for i, t in ipairs(tabs) do if t.title == title then SelectTab(i) end end
+end
+local function BuildTabs()
+    local list = { { title = "Centered Auras", page = auraPage } }
+    for _, t in ipairs(TT.extraTabs) do list[#list + 1] = t end
+    if #list < 2 then return end
+    local x = -40
+    for i = #list, 1, -1 do
+        local t = list[i]
+        if not t.page then t.page = t.build(win) end
+        local b = TT.Button(win, t.title, 120, function() SelectTab(i) end)
+        b:SetPoint("TOPRIGHT", x, -34)
+        b:SetScript("OnLeave", function(self)
+            self:SetBackdropColor(unpack(TT.C.panel))
+            self:SetBackdropBorderColor(unpack(self.selected and TT.C.accent or TT.C.border))
+        end)
+        t.button = b
+        x = x - 124
+    end
+    tabs = list
+    SelectTab(1)
+end
+
 win:SetScript("OnShow", function()
-    if not body.built then body.built = true; M:BuildSettings(body, body) end
+    if not body.built then body.built = true; M:BuildSettings(body, body); BuildTabs() end
     enableCheck:SetChecked(M.enabled)
     if body.OnPageShow then body.OnPageShow() end
 end)
@@ -435,6 +475,8 @@ local function CopyDefaults(src, dst)
         end
     end
 end
+
+TT.CopyDefaults = CopyDefaults
 
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
@@ -459,6 +501,10 @@ loader:SetScript("OnEvent", function(self, _, name)
     M.db, M.enabled = db, db.enabled
     ApplyAnchor()
     if M.enabled then RegisterEditMode() end
+    for _, f in ipairs(TT.onReady) do
+        local ok, err = pcall(f, db)
+        if not ok then geterrorhandler()("Trikks Auras: " .. tostring(err)) end
+    end
 end)
 
 local ev = CreateFrame("Frame")
@@ -479,5 +525,6 @@ SlashCmdList.TTCENTEREDAURAS = function(msg)
     elseif cmd == "remove" then RemoveSpell(arg)
     elseif cmd == "unlock" or cmd == "lock" then TT.Print("move the row in Edit Mode (Esc > Edit Mode).")
     elseif cmd == "test" then testMode = not testMode; Update()
+    elseif cmd == "buffs" or cmd == "reminders" then win:Show(); TT.SelectTab("Buff Reminders")
     else win:SetShown(not win:IsShown()) end
 end
