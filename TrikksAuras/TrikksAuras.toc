@@ -2,7 +2,7 @@
 ## Title: Trikks Auras
 ## IconTexture: Interface\AddOns\TrikksAuras\media\minimap
 ## Notes: Your chosen buffs/debuffs in a row that grows from the centre, placed with Edit Mode, plus class buff reminders. /ca
-## Version: 1.1
+## Version: 1.2
 ## OptionalDeps: TrikksTweaks
 ## SavedVariables: TrikksAurasDB
 

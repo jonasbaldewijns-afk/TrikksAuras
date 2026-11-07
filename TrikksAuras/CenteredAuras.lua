@@ -24,6 +24,56 @@ local function GetAura(id)
     if ok and a and not IsSecret(a) then return a end
 end
 
+-- In combat this client hides most aura data from addons ("secret values"):
+-- asking "do I have spell X?" gets no answer then. What stays readable is
+-- each aura's instance ID, a number it keeps for as long as it is on you. So
+-- whenever the data IS readable we remember "instance 1234 = spell X", and in
+-- combat keep showing those instances while they are still there. Timer and
+-- stacks come from Blizzard's display-only objects (a duration object for the
+-- swipe, a ready-made stack text), which are allowed to carry secret data.
+-- Limit: a buff gained during combat whose spell ID is secret can't be recognised.
+local instances = {}          -- auraInstanceID -> spellID, tracked spells only
+local refreshed = {}          -- instances Blizzard updated (refreshed timer / stacks)
+
+local function Tracked(id)
+    for _, v in ipairs(M.db.spells) do if v == id then return true end end
+    return false
+end
+local function Remember(a)
+    if a and not IsSecret(a) and a.auraInstanceID and not IsSecret(a.auraInstanceID)
+       and a.spellId and not IsSecret(a.spellId) and M.db and Tracked(a.spellId) then
+        instances[a.auraInstanceID] = a.spellId
+    end
+end
+-- the instance IDs of everything on you right now (this list is never secret);
+-- nil when the client has no such function
+local function PresentIDs()
+    if not (C_UnitAuras and C_UnitAuras.GetUnitAuraInstanceIDs) then return nil end
+    local set = {}
+    for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
+        local ok, ids = pcall(C_UnitAuras.GetUnitAuraInstanceIDs, "player", filter)
+        if ok and type(ids) == "table" then
+            for _, iid in ipairs(ids) do
+                if not IsSecret(iid) then set[iid] = true end
+            end
+        end
+    end
+    return set
+end
+local function InstanceOf(id, present)
+    if not present then return nil end
+    for iid, sid in pairs(instances) do
+        if sid == id and present[iid] then return iid end
+    end
+    return nil
+end
+-- does Blizzard hide this buff from addons in combat?
+local function SecretInCombat(id)
+    if not (C_Secrets and C_Secrets.ShouldSpellAuraBeSecret) then return false end
+    local ok, secret = pcall(C_Secrets.ShouldSpellAuraBeSecret, id)
+    return ok and secret == true
+end
+
 ---------------------------------------------------------------------------
 -- Anchor (centre point of the row), moved through Blizzard's Edit Mode
 ---------------------------------------------------------------------------
@@ -86,18 +136,27 @@ local function GetIcon(i)
 end
 
 local function HideAll(from)
-    for i = from or 1, #icons do icons[i]:Hide(); icons[i].exp = nil; icons[i].isTest = false end
+    for i = from or 1, #icons do icons[i]:Hide(); icons[i].exp = nil; icons[i].isTest = false; icons[i].inst = nil end
 end
 
 local function Update()
     if not M.db then return end
     if not M.enabled then HideAll(); return end
-    local db, shown = M.db, {}
+    local db, shown, present = M.db, {}, false
     for _, id in ipairs(db.spells) do
         local a = GetAura(id)
+        local iid
+        if not a then
+            if present == false then present = PresentIDs() end
+            iid = InstanceOf(id, present)
+        end
         if a then
+            Remember(a)
             shown[#shown + 1] = { icon = a.icon, dur = Num(a.duration), exp = Num(a.expirationTime),
                                   stacks = Num(a.applications) }
+        elseif iid then
+            local _, icon = SpellInfo(id)
+            shown[#shown + 1] = { icon = icon or 134400, inst = iid }
         elseif testMode or inEditMode then
             local _, icon = SpellInfo(id)
             shown[#shown + 1] = { icon = icon or 134400, dur = 30, exp = 0, stacks = 0, test = true }
@@ -118,10 +177,24 @@ local function Update()
         if db.vertical then f:SetPoint("CENTER", anchor, "CENTER", 0, -offset)
         else f:SetPoint("CENTER", anchor, "CENTER", offset, 0) end
         f.tex:SetTexture(data.icon)
-        f.count:SetText((db.showStacks and data.stacks > 1) and data.stacks or "")
         f.cd:SetDrawSwipe(db.showSwipe)
         f.cd:SetHideCountdownNumbers(not db.showNumbers)
-        if data.test then
+        if data.inst then
+            -- secret data: Blizzard's own stack text and duration object
+            local okC, txt = pcall(C_UnitAuras.GetAuraApplicationDisplayCount, "player", data.inst, 2)
+            f.count:SetText((db.showStacks and okC and txt) or "")
+            if f.inst ~= data.inst or refreshed[data.inst] then
+                local okD, dur = pcall(C_UnitAuras.GetAuraDuration, "player", data.inst)
+                if not (okD and dur and pcall(f.cd.SetCooldownFromDurationObject, f.cd, dur)) then f.cd:Clear() end
+                f.inst, f.exp, f.isTest = data.inst, nil, false
+            end
+        else
+            f.inst = nil
+            f.count:SetText((db.showStacks and data.stacks > 1) and data.stacks or "")
+        end
+        if data.inst then
+            f.exp = nil
+        elseif data.test then
             if not f.isTest then f.cd:SetCooldown(GetTime(), 30); f.isTest = true; f.exp = nil end
         elseif data.dur > 0 and data.exp > 0 then
             if f.exp ~= data.exp then
@@ -134,6 +207,7 @@ local function Update()
         f:Show()
     end
     HideAll(n + 1)
+    wipe(refreshed)
 end
 
 ---------------------------------------------------------------------------
@@ -246,7 +320,7 @@ function M:BuildSettings(body, page)
             local name, icon = SpellInfo(id)
             row.id = id
             row.icon:SetTexture(icon or 134400)
-            row.text:SetText((name or "Unknown") .. " |cff888888" .. id .. "|r")
+            row.text:SetText((name or "Unknown") .. " |cff888888" .. id .. "|r" .. (SecretInCombat(id) and " |cffffaa00*|r" or ""))
             row.del:SetScript("OnClick", function() RemoveSpell(id) end)
             row.up:SetScript("OnClick", function() MoveSpell(i, -1) end)
             row.down:SetScript("OnClick", function() MoveSpell(i, 1) end)
@@ -301,7 +375,7 @@ function M:BuildSettings(body, page)
         ApplyAnchor()
     end)
     Place(resetPos, -12)
-    local tip = TT.Label(right, "Move the row in Edit Mode (Esc > Edit Mode):\nit's listed as \"Centered Auras\", with its own\nposition per layout.\n\nTip: IDs & Links - hold Ctrl over a buff\nto see its spell ID.", "GameFontDisableSmall")
+    local tip = TT.Label(right, "Move the row in Edit Mode (Esc > Edit Mode):\nit's listed as \"Centered Auras\", with its own\nposition per layout.\n\nTip: IDs & Links - hold Ctrl over a buff\nto see its spell ID.\n\n|cffffaa00*|r Blizzard hides this buff from addons in\ncombat: it keeps showing if it was up before\nthe fight, but can't appear if you get it\nduring combat.", "GameFontDisableSmall")
     Place(tip, -10)
 
     -- picker: auras you have right now, click to add
@@ -510,7 +584,23 @@ end)
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 ev:RegisterUnitEvent("UNIT_AURA", "player")
-ev:SetScript("OnEvent", function(_, event)
+-- keep the instance list up to date (see the note at the top)
+local function TrackChanges(info)
+    if info.isFullUpdate then
+        local present = PresentIDs()
+        if present then for iid in pairs(instances) do if not present[iid] then instances[iid] = nil end end end
+    end
+    for _, a in ipairs(info.addedAuras or {}) do Remember(a) end
+    for _, iid in ipairs(info.updatedAuraInstanceIDs or {}) do
+        if not IsSecret(iid) and instances[iid] then refreshed[iid] = true end
+    end
+    for _, iid in ipairs(info.removedAuraInstanceIDs or {}) do
+        if not IsSecret(iid) then instances[iid] = nil end
+    end
+end
+ev:SetScript("OnEvent", function(_, event, _, info)
+    if event == "PLAYER_ENTERING_WORLD" then wipe(instances) end
+    if event == "UNIT_AURA" and type(info) == "table" and M.db then pcall(TrackChanges, info) end
     Update()
     if event == "UNIT_AURA" and RefreshPicker then RefreshPicker() end
 end)
