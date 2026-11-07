@@ -1,0 +1,7 @@
+package-as: TrikksAuras
+
+move-folders:
+  TrikksAuras/TrikksAuras: TrikksAuras
+
+ignore:
+  - README.md

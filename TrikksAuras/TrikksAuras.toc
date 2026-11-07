@@ -1,0 +1,13 @@
+## Interface: 16001, 120105
+## Title: Trikks Auras
+## IconTexture: Interface\AddOns\TrikksAuras\media\minimap
+## Notes: Your chosen buffs/debuffs in a row that grows from the centre, placed with Edit Mode. /ca
+## Version: 1.0
+## OptionalDeps: TrikksTweaks
+## SavedVariables: TrikksAurasDB
+
+Libs\LibStub\LibStub.lua
+Libs\LibEditMode\embed.xml
+
+Kit.lua
+CenteredAuras.lua
