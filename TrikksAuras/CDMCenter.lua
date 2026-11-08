@@ -16,6 +16,7 @@ local DEFAULTS = { enabled = false }        -- opt-in
 local viewer, container
 local hooked = setmetatable({}, { __mode = "k" })
 local pending = false
+local lastSize, lastScale              -- icon size / scale from the last time they were readable
 
 -- Blizzard's icons in their own order
 local function Items()
@@ -40,10 +41,18 @@ local function Recenter()
     local horizontal = container.isHorizontal ~= false
     -- icons are scaled (Edit Mode "icon size"); their offsets are in their own
     -- scaled units, the padding is in the row's units
+    -- In combat the icons' size and scale are secret (can't be used in maths),
+    -- so use the last values we could read; with none yet, leave Blizzard's layout.
     local first = shown[1]
-    local scale = first:GetScale() or 1
-    if scale <= 0 then scale = 1 end
+    local scale = first:GetScale()
     local size = horizontal and first:GetWidth() or first:GetHeight()
+    if IsSecret(scale) or IsSecret(size) or not scale or not size then
+        if not lastSize then return end
+        scale, size = lastScale, lastSize
+    else
+        if scale <= 0 then scale = 1 end
+        lastScale, lastSize = scale, size
+    end
     local gap = (container.childXPadding or 0) / scale
     local total = n * size + (n - 1) * gap
     for i, f in ipairs(shown) do
