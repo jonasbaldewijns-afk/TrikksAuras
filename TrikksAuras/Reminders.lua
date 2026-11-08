@@ -389,8 +389,17 @@ local function RegisterEditMode()
     LEM:RegisterCallback("delete", function(name) R.db.layouts[name] = nil end)
 end
 
+-- Once a second re-check (buffs running out don't always send an event).
+-- Only runs while reminders are on or test mode is showing.
+local ticker
+local function SetTicker(on)
+    if on and not ticker then ticker = C_Timer.NewTicker(1, function() Update() end)
+    elseif not on and ticker then ticker:Cancel(); ticker = nil end
+end
+
 local pendingApply = false
 local function Apply()
+    SetTicker(R.db.enabled or test)
     if InCombatLockdown() then pendingApply = true; return end
     pendingApply = false
     if R.db.enabled then
@@ -426,9 +435,8 @@ for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "GROUP_ROS
 end
 ev:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" and pendingApply then Apply() end
-    Queue()
+    if R.db and (R.db.enabled or test) then Queue() end     -- off: ignore the (frequent) aura events
 end)
-C_Timer.NewTicker(1, function() if R.db and (R.db.enabled or test) then Update() end end)
 
 ---------------------------------------------------------------------------
 -- Settings tab in the /ca window

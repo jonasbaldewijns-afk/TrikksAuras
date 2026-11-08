@@ -485,8 +485,8 @@ local function RegisterEditMode()
     LEM:RegisterCallback("delete", function(name) M.db.layouts[name] = nil end)
 end
 
-function M:OnEnable() RegisterEditMode(); ApplyAnchor(); Update() end
-function M:OnDisable() ApplyAnchor(); Update() end
+function M:OnEnable() RegisterEditMode(); ApplyAnchor(); Update(); M.SetTicker(true) end
+function M:OnDisable() ApplyAnchor(); Update(); M.SetTicker(false) end
 
 -- the window: on/off switch on top, the settings page below (built on first open)
 -- the Centered Auras page; other pages (tabs) are added by the other files
@@ -574,7 +574,7 @@ loader:SetScript("OnEvent", function(self, _, name)
     TrikksAurasDB = db
     M.db, M.enabled = db, db.enabled
     ApplyAnchor()
-    if M.enabled then RegisterEditMode() end
+    if M.enabled then RegisterEditMode(); M.SetTicker(true) end
     for _, f in ipairs(TT.onReady) do
         local ok, err = pcall(f, db)
         if not ok then geterrorhandler()("Trikks Auras: " .. tostring(err)) end
@@ -600,11 +600,20 @@ local function TrackChanges(info)
 end
 ev:SetScript("OnEvent", function(_, event, _, info)
     if event == "PLAYER_ENTERING_WORLD" then wipe(instances) end
-    if event == "UNIT_AURA" and type(info) == "table" and M.db then pcall(TrackChanges, info) end
-    Update()
-    if event == "UNIT_AURA" and RefreshPicker then RefreshPicker() end
+    if M.enabled then
+        if event == "UNIT_AURA" and type(info) == "table" and M.db then pcall(TrackChanges, info) end
+        Update()
+    end
+    if event == "UNIT_AURA" and RefreshPicker then RefreshPicker() end   -- the buff picker can be open while off
 end)
-C_Timer.NewTicker(0.5, Update)            -- safety net for missed aura events
+
+-- Safety net for missed aura events. Only runs while the module is on
+-- (it used to tick twice a second forever, even when Centered Auras was off).
+local ticker
+function M.SetTicker(on)
+    if on and not ticker then ticker = C_Timer.NewTicker(0.5, Update)
+    elseif not on and ticker then ticker:Cancel(); ticker = nil end
+end
 
 SLASH_TTCENTEREDAURAS1 = "/ca"
 SLASH_TTCENTEREDAURAS2 = "/trikksauras"
