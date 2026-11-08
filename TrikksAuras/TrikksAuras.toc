@@ -1,4 +1,4 @@
-## Interface: 16001, 120105
+## Interface: 16001
 ## Title: Trikks Auras
 ## IconTexture: Interface\AddOns\TrikksAuras\media\minimap
 ## Notes: Your chosen buffs/debuffs in a row that grows from the centre, placed with Edit Mode, plus class buff reminders. /ca
