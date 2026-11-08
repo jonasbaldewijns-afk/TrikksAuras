@@ -392,6 +392,7 @@ end
 -- Once a second re-check (buffs running out don't always send an event).
 -- Only runs while reminders are on or test mode is showing.
 local ticker
+local SetListening              -- defined with the event frame further down
 local function SetTicker(on)
     if on and not ticker then ticker = C_Timer.NewTicker(1, function() Update() end)
     elseif not on and ticker then ticker:Cancel(); ticker = nil end
@@ -400,7 +401,8 @@ end
 local pendingApply = false
 local function Apply()
     SetTicker(R.db.enabled or test)
-    if InCombatLockdown() then pendingApply = true; return end
+    SetListening(R.db.enabled or test or pendingApply)
+    if InCombatLockdown() then pendingApply = true; SetListening(true); return end
     pendingApply = false
     if R.db.enabled then
         RegisterEditMode()
@@ -427,16 +429,25 @@ local function Queue()
     queued = true
     C_Timer.After(0.25, function() queued = false; Update() end)
 end
+-- Events are only listened to while reminders are on (or test mode shows):
+-- UNIT_AURA alone fires many times a second in a raid.
+local EVENTS = { "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED",
+                 "PLAYER_UPDATE_RESTING", "ZONE_CHANGED_NEW_AREA", "UNIT_AURA", "UNIT_INVENTORY_CHANGED",
+                 "PLAYER_MOUNT_DISPLAY_CHANGED", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE", "PLAYER_ALIVE", "PLAYER_UNGHOST" }
 local ev = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED",
-                     "PLAYER_UPDATE_RESTING", "ZONE_CHANGED_NEW_AREA", "UNIT_AURA", "UNIT_INVENTORY_CHANGED",
-                     "PLAYER_MOUNT_DISPLAY_CHANGED", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE", "PLAYER_ALIVE", "PLAYER_UNGHOST" }) do
-    pcall(ev.RegisterEvent, ev, e)
-end
 ev:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_REGEN_ENABLED" and pendingApply then Apply() end
-    if R.db and (R.db.enabled or test) then Queue() end     -- off: ignore the (frequent) aura events
+    Queue()
 end)
+local listening = false
+SetListening = function(on)
+    on = on and true or false
+    if on == listening then return end
+    listening = on
+    for _, e in ipairs(EVENTS) do
+        if on then pcall(ev.RegisterEvent, ev, e) else pcall(ev.UnregisterEvent, ev, e) end
+    end
+end
 
 ---------------------------------------------------------------------------
 -- Settings tab in the /ca window
